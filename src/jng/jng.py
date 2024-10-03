@@ -2,18 +2,12 @@ import os
 import gc
 import time
 from machine import Pin, I2C, SPI, UART, ADC
+import network
 
 from ._pinout import JNG_E_V1_R1
 
 from .peripherals.sdcard import SDCard
 from .peripherals.pcf8563 import PCF8563
-
-class ETH:
-    def __init__(self, spi, rst, int, cs):
-        self.spi = spi
-        self.rst = Pin(rst, Pin.OUT, value=1)
-        self.int = Pin(int, Pin.IN)
-        self.cs = Pin(cs, Pin.OUT, value=1)
 
 def _foo(pin):
     pass
@@ -105,3 +99,16 @@ class JNG:
         os.umount(self._sd_mounting_point)
         self._sd_detect.irq(trigger=Pin.IRQ_FALLING, handler=self._sd_detect_handler)
         gc.collect()
+    
+    def intance_nic(self):
+        #self.rst = Pin(self._pinout['ETH']['rst'], Pin.OUT, value=1)
+        # self.int = Pin(self._pinout['ETH']['int'], Pin.IN)
+        # self.cs = Pin(self._pinout['ETH']['cs'], Pin.OUT, value=1)
+        
+        return network.LAN(
+            phy_type=network.PHY_W5500, 
+            spi=self.spi, 
+            phy_addr=1, 
+            cs=Pin(self._pinout['ETH']['cs'], Pin.OUT), 
+            int=Pin(self._pinout['ETH']['int'])
+        )

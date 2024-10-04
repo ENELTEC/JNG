@@ -36,7 +36,7 @@ class _Datetime:
             minute: int = 0,
             second: int = 0
         ) -> None:
-        self.year = year
+        self.year = year + 2000
         self.month = month
         self.weekday = weekday
         self.day = day

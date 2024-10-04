@@ -1,19 +1,25 @@
 import os
 import gc
-import time
+import ubinascii
 from machine import Pin, I2C, SPI, UART, ADC
+from machine import unique_id, RTC
 import network
+from time import time, sleep, ticks_ms, mktime
 
 from ._pinout import JNG_E_V1_R1
 
 from .peripherals.sdcard import SDCard
 from .peripherals.pcf8563 import PCF8563
 
+from .utils.zfill import zfill
+from .utils.NTPlib import NTP_time
+
 def _foo(pin):
     pass
 
 class JNG:
     def __init__(self, pinout:dict=JNG_E_V1_R1, verbose:bool = False) -> None:
+        self._START_TIME = time()
         self._pinout = pinout
         self._verb = verbose
         self._sd_mounting_point = '/sd'
@@ -25,6 +31,10 @@ class JNG:
         self._vusb.atten(ADC.ATTN_11DB)
 
         self._sd_detect = Pin(pinout['SD']['detect'], Pin.IN, Pin.PULL_UP)
+        
+        self.UNIQUE_ID = ubinascii.hexlify(unique_id())
+        self.RAW_UNIQUE_ID = unique_id()
+        self.RTC = RTC()
         
         self.led1 = Pin(pinout['LED1'], Pin.OUT, value=0)
         self.led2 = Pin(pinout['LED2'], Pin.OUT, value=0)
@@ -58,7 +68,7 @@ class JNG:
     def _sd_detect_handler(self, pin) -> None:
         # disable interrupt to prevent multiple calls
         self._sd_detect.irq(trigger=Pin.IRQ_RISING, handler=_foo)
-        time.sleep(0.1)
+        sleep(0.1)
         if self.sd_card_present:
             self.intance_sd_card()
             os.mount(self.sdcard, self._sd_mounting_point)
@@ -71,11 +81,11 @@ class JNG:
     def uart_baudrate(self, baudrate:int) -> None:
         self.uart.init(baudrate=baudrate)
     
-    def flip_uart_pins(self) -> None:
+    def invert_uart(self) -> None:
         self.uart.deinit()
         self.uart = UART(1, tx=Pin(self._pinout['UART']['rx']), rx=Pin(self._pinout['UART']['tx']), baudrate=115200)
     
-    def flip_i2c_pins(self) -> None:
+    def invert_i2c(self) -> None:
         #self.i2c.deinit()
         self.i2c = I2C(sda=Pin(self._pinout['I2C']['scl']), scl=Pin(self._pinout['I2C']['sda']))
     
@@ -112,3 +122,82 @@ class JNG:
             cs=Pin(self._pinout['ETH']['cs'], Pin.OUT), 
             int=Pin(self._pinout['ETH']['int'])
         )
+    
+    def get_firmware_version(self):
+        return os.uname()[2]
+    
+    def get_time_unix(self):
+        return time() + 946684800
+
+    def get_uptime(self):
+        return time() - self._START_TIME
+
+    def get_uniqueid(self):
+        return self.UNIQUE_ID
+    
+    def get_raw_uniqueid(self):
+        return self.RAW_UNIQUE_ID
+    
+    def pw_status(self) -> str:
+        if self.vusb < self.vbat:
+            return ("DISCONECTED")
+        else:
+            if self.vbat < 4.2:
+                return ("CHARGING")
+            else:
+                return ("CONNECTED")
+    
+    def enable_aux_LDO(self):
+        self.aux_LDO_state(1)
+    
+    def disable_aux_LDO(self):
+        self.aux_LDO_state(0)
+    
+    def aux_LDO_state(self, *args):
+        return self.aux.value( *args )
+    
+    def datetime(self):
+        return(self.RTC.datetime())
+    
+    def timestamp(self, datetime = None):
+        if datetime is None:
+            datetime = self.datetime()
+            return mktime((datetime[0], datetime[1], datetime[2], datetime[4], datetime[5], datetime[6], datetime[3], 0)) + 946684800
+        else:
+            return time() + 946684800
+    def datetimeIsoformat(self, datetime=None):
+        if datetime is None:
+            datetime = self.datetime()
+        return str(datetime[0]) + '-' + zfill(str(datetime[1]),2) + '-' + zfill(str(datetime[2]),2) + 'T' + zfill(str(datetime[4]),2) + ':' + zfill(str(datetime[5]),2) + ':' + zfill(str(datetime[6]),2) + '.' + str(datetime[7])
+
+    def ntp_update(self, host, timezone, timeout=None, update_hrtc=True):
+        ntp = NTP_time(host, timezone, 1)
+        uptime_old = self.get_uptime()
+        x = ticks_ms()
+        _timeout_hold = ntp._timeout
+        try:
+            if timeout is not None:
+                ntp._timeout = timeout
+            ntp.settime()
+            if update_hrtc and hasattr(self, "hwrtc"): self.hwrtc.write_now() #self.hwrtc.datetime(self.RTC.datetime())
+        except:
+            print("NTP error...")
+            if hasattr(self, "hwrtc"):
+                datetime = self.hwrtc.datetime()
+                ntp.settime((
+                    datetime.year,
+                    datetime.month,
+                    datetime.day,
+                    datetime.hour - timezone, ## this is the method
+                    datetime.minute,
+                    datetime.second,
+                    0,
+                    datetime.weekday
+                ))
+                print("Sync with external RTC!")
+        finally:
+            ntp._timeout = _timeout_hold
+        y = ticks_ms()
+
+        self._START_TIME = time() - uptime_old - int((y - x)/1000)
+        return True

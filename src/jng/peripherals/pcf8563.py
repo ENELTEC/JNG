@@ -26,6 +26,30 @@ Created by Lewis he on September 17, 2019.
 github:https://github.com/lewisxhe/PCF8563_PythonLibrary
 '''
 
+class _Datetime:
+    def __init__(self,
+            year: int = 0,
+            month: int = 0,
+            weekday: int = 0,
+            day: int = 0,
+            hour: int = 0,
+            minute: int = 0,
+            second: int = 0
+        ) -> None:
+        self.year = year
+        self.month = month
+        self.weekday = weekday
+        self.day = day
+        self.hour = hour
+        self.minute = minute
+        self.second = second
+    
+    def __str__(self) -> str:
+        return f"({self.year}, {self.month}, {self.day}, {self.weekday}, {self.hour}, {self.minute}, {self.second}, 0)"
+    
+    def __repr__(self) -> str:
+        return f"({self.year}, {self.month}, {self.day}, {self.weekday}, {self.hour}, {self.minute}, {self.second}, 0)"
+
 import utime
 from machine import I2C
 
@@ -135,6 +159,16 @@ class PCF8563:
         """Return a tuple such as (year, month, date, day, hours, minutes,
         seconds).
         """
+        return  _Datetime(
+            year=self.year(),
+            month=self.month(),
+            weekday=self.date(),
+            day=self.day(),
+            hour=self.hours(),
+            minute=self.minutes(),
+            second=self.seconds()
+        )
+        
         return (self.year(), self.month(), self.date(),
                 self.day(), self.hours(), self.minutes(),
                 self.seconds())

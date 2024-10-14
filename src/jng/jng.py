@@ -31,6 +31,10 @@ class JNG:
         self._vusb.atten(ADC.ATTN_11DB)
 
         self._sd_detect = Pin(pinout['SD']['detect'], Pin.IN, Pin.PULL_UP)
+
+        self._i2c_irq = Pin(pinout['I2C']['irq'], Pin.IN) # On board 4k7 pull-up resistor
+        self._i2c_irq.irq(trigger=Pin.IRQ_FALLING, handler=self._i2c_irq)
+        self.i2c_irq_handler = None
         
         self.UNIQUE_ID = ubinascii.hexlify(unique_id())
         self.RAW_UNIQUE_ID = unique_id()
@@ -64,6 +68,11 @@ class JNG:
             self.hwrtc = PCF8563(self.i2c)
         else:
             self.hwrtc = None
+
+    def _i2c_irq(self, pin) -> None:
+        if self.i2c_irq_handler is not None:
+            if callable(self.i2c_irq_handler):
+                self.i2c_irq_handler(pin)
 
     def _sd_detect_handler(self, pin) -> None:
         # disable interrupt to prevent multiple calls

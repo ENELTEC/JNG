@@ -1,7 +1,8 @@
 JNG_E_V1_R1 = {
     'I2C': {
         'sda': 8,
-        'scl': 9
+        'scl': 9,
+        'irq': 21
     },
     'SPI': {
         'sck': 12,

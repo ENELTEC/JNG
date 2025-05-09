@@ -6,10 +6,11 @@ from machine import unique_id, RTC
 import network
 from time import time, sleep, ticks_ms, mktime
 
-from ._pinout import JNG_E_V1_R1
+from ._pinout import JNG_E_V1_R1, JNG_E_V1_R2
 
 from .peripherals.sdcard import SDCard
 from .peripherals.pcf8563 import PCF8563
+from .peripherals.urtc import DS1307
 
 from .utils.zfill import zfill
 from .utils.NTPlib import NTP_time
@@ -18,7 +19,7 @@ def _foo(pin):
     pass
 
 class JNG:
-    def __init__(self, pinout:dict=JNG_E_V1_R1, verbose:bool = False) -> None:
+    def __init__(self, pinout:dict=JNG_E_V1_R2, verbose:bool = False) -> None:
         self._START_TIME = time()
         self._pinout = pinout
         self._verb = verbose
@@ -58,14 +59,20 @@ class JNG:
         
         self.sdcard = None
         if self.sd_card_present:
-            self.intance_sd_card()
-            os.mount(self.sdcard, self._sd_mounting_point)
+            try:
+                self.instance_sd_card()
+                os.mount(self.sdcard, self._sd_mounting_point)
+            except Exception as e:
+                print("SD card mount error: ", e)
+                self._sd_detect.irq(trigger=Pin.IRQ_FALLING, handler=self._sd_detect_handler)
         else:
             self._sd_detect.irq(trigger=Pin.IRQ_FALLING, handler=self._sd_detect_handler)
         
         _i2c_addr = self.i2c.scan()
         if 81 in _i2c_addr:
             self.hwrtc = PCF8563(self.i2c)
+        elif 104 in _i2c_addr:
+            self.hwrtc = DS1307(self.i2c)
         else:
             self.hwrtc = None
 
@@ -79,7 +86,7 @@ class JNG:
         self._sd_detect.irq(trigger=Pin.IRQ_RISING, handler=_foo)
         sleep(0.1)
         if self.sd_card_present:
-            self.intance_sd_card()
+            self.instance_sd_card()
             os.mount(self.sdcard, self._sd_mounting_point)
         else:
             self._sd_detect.irq(trigger=Pin.IRQ_FALLING, handler=self._sd_detect_handler)
@@ -110,7 +117,7 @@ class JNG:
     def sd_card_present(self) -> bool:
         return not self._sd_detect.value()
     
-    def intance_sd_card(self) -> SDCard:
+    def instance_sd_card(self) -> SDCard:
         self.sdcard = SDCard(self.spi, Pin(self._pinout['SD']['cs']) )
         return self.sdcard
     
@@ -119,7 +126,7 @@ class JNG:
         self._sd_detect.irq(trigger=Pin.IRQ_FALLING, handler=self._sd_detect_handler)
         gc.collect()
     
-    def intance_nic(self):
+    def instance_nic(self):
         #self.rst = Pin(self._pinout['ETH']['rst'], Pin.OUT, value=1)
         # self.int = Pin(self._pinout['ETH']['int'], Pin.IN)
         # self.cs = Pin(self._pinout['ETH']['cs'], Pin.OUT, value=1)
@@ -188,9 +195,11 @@ class JNG:
             if timeout is not None:
                 ntp._timeout = timeout
             ntp.settime()
-            if update_hrtc and hasattr(self, "hwrtc"): self.hwrtc.write_now() #self.hwrtc.datetime(self.RTC.datetime())
-        except:
-            print("NTP error...")
+            if update_hrtc and hasattr(self, "hwrtc"):
+                if hasattr(self.hwrtc, 'write_now'): self.hwrtc.write_now() #self.hwrtc.datetime(self.RTC.datetime())
+                else: self.hwrtc.datetime(self.RTC.datetime())
+        except Exception as e:
+            print("NTP error: ", e)
             if hasattr(self, "hwrtc"):
                 datetime = self.hwrtc.datetime()
                 ntp.settime((

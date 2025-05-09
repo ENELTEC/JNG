@@ -1,4 +1,5 @@
 from jng import JNG
+from time import sleep
 
 jng = JNG()
 
@@ -7,10 +8,19 @@ jng = JNG()
 nic = None
 def connect_nic(mac=b'\xde\xad\xbe\xef\xfe\xed'):
     global nic
-    nic = jng.intance_nic() ## initialize w5500 ethernet controller
+    nic = jng.instance_nic() ## initialize w5500 ethernet controller
     nic_mac = mac[:-1] + (mac[-1]+1).to_bytes(1, 'big')
     nic.config(mac=nic_mac)
     nic.active(1)
+    _count = 0
+    while not nic.isconnected():
+        print('Connecting to network...')
+        sleep(1)
+        if _count > 15:
+            print('Failed to connect to network')
+            break
+        _count += 1
+    print(nic.ifconfig())
 
 connect_nic()
 jng.ntp_update(

@@ -33,3 +33,5 @@ JNG_E_V1_R1 = {
     'SW1' : 15,
     'SW2' : 16,
 }
+
+JNG_E_V1_R2 = JNG_E_V1_R1.copy()
